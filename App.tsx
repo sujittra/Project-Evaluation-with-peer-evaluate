@@ -220,37 +220,38 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // 1. ตรวจสอบ Hash ทันทีที่โหลดหน้าเว็บ
-    // เพื่อดักจับกรณีเปลี่ยนรหัสผ่าน ซึ่ง URL จะมี #...&type=recovery
-    const isRecovery = window.location.hash && window.location.hash.includes('type=recovery');
-    if (isRecovery) {
-      setShowChangePassword(true);
-      setShowLoginModal(false);
-    }
-
     fetchData();
     
+    // Initialize session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      // ถ้ามี session แสดงว่าอาจจะคลิกลิงก์เข้ามาแล้ว login อัตโนมัติ
       if (session) {
          setView('teacher');
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Handle Auth State Changes (Login, Logout, Password Recovery)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth Event:", event); // Debug log
       setSession(session);
-      if (session) {
-         setShowLoginModal(false);
-         setView('teacher');
-         fetchData();
-         
-         // 2. ตรวจสอบ Event จาก Supabase เพื่อความชัวร์อีกชั้น
-         if (_event === 'PASSWORD_RECOVERY' || isRecovery) {
-            setShowChangePassword(true);
+      
+      if (event === 'PASSWORD_RECOVERY') {
+         // This event fires when user clicks the reset link
+         setShowChangePassword(true);
+         setShowLoginModal(false); 
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+         if (session) {
+           // Normal login or after password reset
+           setShowLoginModal(false);
+           setView('teacher');
+           fetchData();
          }
+      } else if (event === 'SIGNED_OUT') {
+         setView('landing');
+         setSession(null);
       }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -299,8 +300,8 @@ const App: React.FC = () => {
     if (!email) return alert('กรุณากรอก Email เพื่อรับลิงก์รีเซ็ตรหัสผ่าน');
     setLoading(true);
     try {
-      // ใช้ window.location.origin เพื่อให้ URL เป็น Base URL ที่ถูกต้อง (เช่น http://localhost:5173 หรือ URL ของ Vercel)
-      // *** สำคัญ: ต้องเพิ่ม URL นี้ใน Supabase > Authentication > URL Configuration > Redirect URLs ***
+      // NOTE: window.location.origin = "http://localhost:5173" or "https://your-app.vercel.app"
+      // Ensure this URL is added to Supabase > Authentication > URL Configuration > Redirect URLs
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin, 
       });
