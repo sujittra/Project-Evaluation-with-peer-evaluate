@@ -220,18 +220,33 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // 1. ตรวจสอบ Hash ทันทีที่โหลดหน้าเว็บ
+    // เพื่อดักจับกรณีเปลี่ยนรหัสผ่าน ซึ่ง URL จะมี #...&type=recovery
+    const isRecovery = window.location.hash && window.location.hash.includes('type=recovery');
+    if (isRecovery) {
+      setShowChangePassword(true);
+      setShowLoginModal(false);
+    }
+
     fetchData();
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      // ถ้ามี session แสดงว่าอาจจะคลิกลิงก์เข้ามาแล้ว login อัตโนมัติ
+      if (session) {
+         setView('teacher');
+      }
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
          setShowLoginModal(false);
          setView('teacher');
          fetchData();
-         // Check if this is a password recovery session
-         if (_event === 'PASSWORD_RECOVERY') {
+         
+         // 2. ตรวจสอบ Event จาก Supabase เพื่อความชัวร์อีกชั้น
+         if (_event === 'PASSWORD_RECOVERY' || isRecovery) {
             setShowChangePassword(true);
          }
       }
@@ -284,8 +299,10 @@ const App: React.FC = () => {
     if (!email) return alert('กรุณากรอก Email เพื่อรับลิงก์รีเซ็ตรหัสผ่าน');
     setLoading(true);
     try {
+      // ใช้ window.location.origin เพื่อให้ URL เป็น Base URL ที่ถูกต้อง (เช่น http://localhost:5173 หรือ URL ของ Vercel)
+      // *** สำคัญ: ต้องเพิ่ม URL นี้ใน Supabase > Authentication > URL Configuration > Redirect URLs ***
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.href, // Redirect back to this page
+        redirectTo: window.location.origin, 
       });
       if (error) throw error;
       alert('ระบบส่งลิงก์รีเซ็ตรหัสผ่านไปที่ Email เรียบร้อยแล้ว กรุณาตรวจสอบ Inbox/Junk Box');
@@ -303,7 +320,7 @@ const App: React.FC = () => {
       try {
           const { error } = await supabase.auth.updateUser({ password: newPass });
           if (error) throw error;
-          alert('เปลี่ยนรหัสผ่านสำเร็จเรียบร้อย');
+          alert('เปลี่ยนรหัสผ่านสำเร็จเรียบร้อย! กรุณาใช้งานระบบตามปกติ');
           setShowChangePassword(false);
       } catch (error: any) {
           alert('Error updating password: ' + error.message);
